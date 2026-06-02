@@ -1,0 +1,29 @@
+{
+  "name": "offline-spreadsheet-search",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "latest",
+    "fuse.js": "latest",
+    "idb": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "xlsx": "latest"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.16",
+    "@types/react-dom": "^19.2.3",
+    "typescript": "latest",
+    "vite": "latest"
+  },
+  "engines": {
+    "node": ">=20 <23"
+  }
+}
