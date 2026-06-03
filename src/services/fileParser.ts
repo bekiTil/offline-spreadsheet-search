@@ -1,28 +1,22 @@
 import * as XLSX from 'xlsx';
+import { profileColumns } from './columnProfiler';
 import type { ParsedFilePreview, SpreadsheetFileType, SpreadsheetRow } from '../types/dataset';
 
-const LARGE_FILE_ROW_WARNING = 25000;
-const PREVIEW_LIMIT = 10;
+const PREVIEW_LIMIT = 8;
+const LARGE_ROW_WARNING = 25_000;
 
 function getFileType(fileName: string): SpreadsheetFileType {
-  const extension = fileName.split('.').pop()?.toLowerCase();
-  if (extension === 'csv' || extension === 'tsv' || extension === 'xlsx' || extension === 'xls') {
-    return extension;
-  }
+  const ext = fileName.split('.').pop()?.toLowerCase();
+  if (ext === 'csv' || ext === 'tsv' || ext === 'xlsx' || ext === 'xls') return ext;
   return 'unknown';
 }
 
-function makeSafeHeader(rawHeader: unknown, index: number, usedHeaders: Set<string>): string {
-  const base = String(rawHeader ?? '').trim() || `Column ${index + 1}`;
+function makeSafeHeader(raw: unknown, index: number, used: Set<string>): string {
+  const base = String(raw ?? '').trim() || `Column ${index + 1}`;
   let header = base;
-  let duplicateNumber = 2;
-
-  while (usedHeaders.has(header)) {
-    header = `${base} ${duplicateNumber}`;
-    duplicateNumber += 1;
-  }
-
-  usedHeaders.add(header);
+  let n = 2;
+  while (used.has(header)) { header = `${base} ${n}`; n++; }
+  used.add(header);
   return header;
 }
 
@@ -33,29 +27,22 @@ function normalizeCell(value: unknown): string {
 }
 
 function rowsFromSheet(sheet: XLSX.WorkSheet): { columns: string[]; rows: SpreadsheetRow[] } {
-  const rawRows = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
-    header: 1,
-    defval: '',
-    blankrows: false,
-    raw: false,
-  });
+  const raw = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
+    header: 1, defval: '', blankrows: false, raw: false,
+  }) as unknown[][];
 
-  if (rawRows.length === 0) {
-    return { columns: [], rows: [] };
-  }
+  if (raw.length === 0) return { columns: [], rows: [] };
 
-  const maxColumnCount = rawRows.reduce((max, row) => Math.max(max, (row as unknown[]).length), 0);
-  const headerRow = rawRows[0] ?? [];
-  const usedHeaders = new Set<string>();
-  const columns = Array.from({ length: maxColumnCount }, (_, index) =>
-    makeSafeHeader((headerRow as unknown[])[index], index, usedHeaders),
+  const maxCols = raw.reduce((m, r) => Math.max(m, (r as unknown[]).length), 0);
+  const headerRow = raw[0] as unknown[];
+  const used = new Set<string>();
+  const columns = Array.from({ length: maxCols }, (_, i) =>
+    makeSafeHeader(headerRow[i], i, used),
   );
 
-  const rows = rawRows.slice(1).map((rawRow) => {
+  const rows: SpreadsheetRow[] = (raw.slice(1) as unknown[][]).map(rawRow => {
     const row: SpreadsheetRow = {};
-    columns.forEach((column, index) => {
-      row[column] = normalizeCell((rawRow as unknown[])[index]);
-    });
+    columns.forEach((col, i) => { row[col] = normalizeCell((rawRow as unknown[])[i]); });
     return row;
   });
 
@@ -71,14 +58,19 @@ function buildPreview(
   sheet: XLSX.WorkSheet,
 ): ParsedFilePreview {
   const { columns, rows } = rowsFromSheet(sheet);
-  const warnings: string[] = [];
 
   if (columns.length === 0) {
-    throw new Error(`No columns found in "${displayName}". Make sure the first row contains column names.`);
+    throw new Error(
+      `No columns found in "${displayName}". Make sure the first row contains column headers.`,
+    );
   }
 
-  if (rows.length > LARGE_FILE_ROW_WARNING) {
-    warnings.push(`"${displayName}" is a large tab — saving and searching may take a little longer.`);
+  const columnProfiles = profileColumns(rows, columns);
+  const warnings: string[] = [];
+  if (rows.length > LARGE_ROW_WARNING) {
+    warnings.push(
+      `Large file (${rows.length.toLocaleString()} rows) — saving and searching may be slower than usual.`,
+    );
   }
 
   return {
@@ -89,6 +81,7 @@ function buildPreview(
     sourceType,
     fileType,
     columns,
+    columnProfiles,
     rows,
     rowCount: rows.length,
     previewRows: rows.slice(0, PREVIEW_LIMIT),
@@ -99,7 +92,9 @@ function buildPreview(
 export async function parseSpreadsheetFile(file: File): Promise<ParsedFilePreview[]> {
   const fileType = getFileType(file.name);
   if (fileType === 'unknown') {
-    throw new Error('This file type is not supported yet. Please use CSV, TSV, XLS, or XLSX.');
+    throw new Error(
+      'Unsupported file type. Please use CSV, TSV, XLS, or XLSX.',
+    );
   }
 
   const buffer = await file.arrayBuffer();
@@ -110,32 +105,33 @@ export async function parseSpreadsheetFile(file: File): Promise<ParsedFilePrevie
   });
 
   if (workbook.SheetNames.length === 0) {
-    throw new Error('This file does not contain a readable sheet.');
+    throw new Error('This file does not contain any readable sheets.');
   }
 
-  // CSV/TSV: always a single "sheet" — treat as a plain file
+  // CSV / TSV: always a single table
   if (fileType === 'csv' || fileType === 'tsv') {
     const sheetName = workbook.SheetNames[0]!;
-    const sheet = workbook.Sheets[sheetName]!;
+    const sheet = workbook.Sheets[sheetName];
+    if (!sheet) throw new Error('Could not read file contents.');
     return [buildPreview(file.name, '', file.name, 'file', fileType, sheet)];
   }
 
-  // XLSX/XLS: one preview per sheet (tab)
-  const isSingleSheet = workbook.SheetNames.length === 1;
+  // XLS / XLSX: one entry per sheet tab
+  const isSingle = workbook.SheetNames.length === 1;
   const previews: ParsedFilePreview[] = [];
   const errors: string[] = [];
 
   for (const sheetName of workbook.SheetNames) {
     const sheet = workbook.Sheets[sheetName];
     if (!sheet) continue;
-
-    const displayName = isSingleSheet ? file.name : `${file.name} / ${sheetName}`;
-    const sourceType = isSingleSheet ? 'file' : 'sheet';
-
+    const displayName = isSingle ? file.name : `${file.name} / ${sheetName}`;
+    const sourceType: 'file' | 'sheet' = isSingle ? 'file' : 'sheet';
     try {
-      previews.push(buildPreview(file.name, isSingleSheet ? '' : sheetName, displayName, sourceType, fileType, sheet));
-    } catch (error) {
-      errors.push(error instanceof Error ? error.message : `Could not read tab "${sheetName}".`);
+      previews.push(
+        buildPreview(file.name, isSingle ? '' : sheetName, displayName, sourceType, fileType, sheet),
+      );
+    } catch (e) {
+      errors.push(e instanceof Error ? e.message : `Could not read tab "${sheetName}".`);
     }
   }
 
