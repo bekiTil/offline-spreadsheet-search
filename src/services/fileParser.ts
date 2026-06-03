@@ -44,17 +44,17 @@ function rowsFromSheet(sheet: XLSX.WorkSheet): { columns: string[]; rows: Spread
     return { columns: [], rows: [] };
   }
 
-  const maxColumnCount = rawRows.reduce((max, row) => Math.max(max, row.length), 0);
+  const maxColumnCount = rawRows.reduce((max, row) => Math.max(max, (row as unknown[]).length), 0);
   const headerRow = rawRows[0] ?? [];
   const usedHeaders = new Set<string>();
   const columns = Array.from({ length: maxColumnCount }, (_, index) =>
-    makeSafeHeader(headerRow[index], index, usedHeaders),
+    makeSafeHeader((headerRow as unknown[])[index], index, usedHeaders),
   );
 
   const rows = rawRows.slice(1).map((rawRow) => {
     const row: SpreadsheetRow = {};
     columns.forEach((column, index) => {
-      row[column] = normalizeCell(rawRow[index]);
+      row[column] = normalizeCell((rawRow as unknown[])[index]);
     });
     return row;
   });
@@ -62,7 +62,41 @@ function rowsFromSheet(sheet: XLSX.WorkSheet): { columns: string[]; rows: Spread
   return { columns, rows };
 }
 
-export async function parseSpreadsheetFile(file: File): Promise<ParsedFilePreview> {
+function buildPreview(
+  fileName: string,
+  sheetName: string,
+  displayName: string,
+  sourceType: 'file' | 'sheet',
+  fileType: SpreadsheetFileType,
+  sheet: XLSX.WorkSheet,
+): ParsedFilePreview {
+  const { columns, rows } = rowsFromSheet(sheet);
+  const warnings: string[] = [];
+
+  if (columns.length === 0) {
+    throw new Error(`No columns found in "${displayName}". Make sure the first row contains column names.`);
+  }
+
+  if (rows.length > LARGE_FILE_ROW_WARNING) {
+    warnings.push(`"${displayName}" is a large tab — saving and searching may take a little longer.`);
+  }
+
+  return {
+    id: crypto.randomUUID(),
+    fileName,
+    sheetName,
+    displayName,
+    sourceType,
+    fileType,
+    columns,
+    rows,
+    rowCount: rows.length,
+    previewRows: rows.slice(0, PREVIEW_LIMIT),
+    warnings,
+  };
+}
+
+export async function parseSpreadsheetFile(file: File): Promise<ParsedFilePreview[]> {
   const fileType = getFileType(file.name);
   if (fileType === 'unknown') {
     throw new Error('This file type is not supported yet. Please use CSV, TSV, XLS, or XLSX.');
@@ -75,31 +109,39 @@ export async function parseSpreadsheetFile(file: File): Promise<ParsedFilePrevie
     FS: fileType === 'tsv' ? '\t' : undefined,
   });
 
-  const firstSheetName = workbook.SheetNames[0];
-  if (!firstSheetName) {
+  if (workbook.SheetNames.length === 0) {
     throw new Error('This file does not contain a readable sheet.');
   }
 
-  const firstSheet = workbook.Sheets[firstSheetName];
-  const { columns, rows } = rowsFromSheet(firstSheet);
-
-  if (columns.length === 0) {
-    throw new Error('No columns were found. Please make sure the first row contains column names.');
+  // CSV/TSV: always a single "sheet" — treat as a plain file
+  if (fileType === 'csv' || fileType === 'tsv') {
+    const sheetName = workbook.SheetNames[0]!;
+    const sheet = workbook.Sheets[sheetName]!;
+    return [buildPreview(file.name, '', file.name, 'file', fileType, sheet)];
   }
 
-  const warnings: string[] = [];
-  if (rows.length > LARGE_FILE_ROW_WARNING) {
-    warnings.push('This is a large file, so saving and searching may take a little longer.');
+  // XLSX/XLS: one preview per sheet (tab)
+  const isSingleSheet = workbook.SheetNames.length === 1;
+  const previews: ParsedFilePreview[] = [];
+  const errors: string[] = [];
+
+  for (const sheetName of workbook.SheetNames) {
+    const sheet = workbook.Sheets[sheetName];
+    if (!sheet) continue;
+
+    const displayName = isSingleSheet ? file.name : `${file.name} / ${sheetName}`;
+    const sourceType = isSingleSheet ? 'file' : 'sheet';
+
+    try {
+      previews.push(buildPreview(file.name, isSingleSheet ? '' : sheetName, displayName, sourceType, fileType, sheet));
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : `Could not read tab "${sheetName}".`);
+    }
   }
 
-  return {
-    id: crypto.randomUUID(),
-    fileName: file.name,
-    fileType,
-    columns,
-    rows,
-    rowCount: rows.length,
-    previewRows: rows.slice(0, PREVIEW_LIMIT),
-    warnings,
-  };
+  if (previews.length === 0) {
+    throw new Error(errors.join(' ') || 'No readable tabs found in this file.');
+  }
+
+  return previews;
 }

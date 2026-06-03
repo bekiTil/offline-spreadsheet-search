@@ -1,23 +1,33 @@
 import { useMemo, useState } from 'react';
 import type { Dataset, MatchMode, SearchFilters, SearchResult } from '../types/dataset';
-import { searchDatasets } from '../services/search';
+import { filterDatasets, searchDatasets } from '../services/search';
 
 type SearchScreenProps = {
   datasets: Dataset[];
   onNavigate: (screen: 'home' | 'import' | 'search' | 'manage') => void;
 };
 
-function getRowsForBrowsing(datasets: Dataset[], filters: SearchFilters): SearchResult[] {
-  const selectedDatasets = filters.datasetId === 'all'
-    ? datasets
-    : datasets.filter((dataset) => dataset.id === filters.datasetId);
+// Group datasets by fileName for the filter dropdown
+function groupDatasetsByFile(datasets: Dataset[]): Map<string, Dataset[]> {
+  const map = new Map<string, Dataset[]>();
+  for (const dataset of datasets) {
+    const group = map.get(dataset.fileName) ?? [];
+    group.push(dataset);
+    map.set(dataset.fileName, group);
+  }
+  return map;
+}
 
+function getRowsForBrowsing(datasets: Dataset[], filters: SearchFilters): SearchResult[] {
+  const selectedDatasets = filterDatasets(datasets, filters.datasetId);
   const rows: SearchResult[] = [];
   selectedDatasets.forEach((dataset) => {
     dataset.rows.forEach((row, rowIndex) => {
       rows.push({
         datasetId: dataset.id,
         fileName: dataset.fileName,
+        sheetName: dataset.sheetName,
+        displayName: dataset.displayName,
         rowIndex,
         row,
         matchedColumns: [],
@@ -36,12 +46,11 @@ export function SearchScreen({ datasets, onNavigate }: SearchScreenProps) {
   });
 
   const hasQuery = filters.query.trim().length > 0;
+  const fileGroups = useMemo(() => groupDatasetsByFile(datasets), [datasets]);
 
   const availableColumns = useMemo(() => {
-    const selectedDatasets = filters.datasetId === 'all'
-      ? datasets
-      : datasets.filter((dataset) => dataset.id === filters.datasetId);
-    return Array.from(new Set(selectedDatasets.flatMap((dataset) => dataset.searchableColumns))).sort();
+    const selectedDatasets = filterDatasets(datasets, filters.datasetId);
+    return Array.from(new Set(selectedDatasets.flatMap((d) => d.searchableColumns))).sort();
   }, [datasets, filters.datasetId]);
 
   const searchResults = useMemo(() => searchDatasets(datasets, filters), [datasets, filters]);
@@ -84,7 +93,7 @@ export function SearchScreen({ datasets, onNavigate }: SearchScreenProps) {
         <div>
           <p className="eyebrow">Search</p>
           <h1>Search imported files</h1>
-          <p>Imported rows are shown first. Type in the search box to filter and see matching values.</p>
+          <p>Imported rows are shown first. Type to filter. You can search all tabs, all tabs from one file, or a specific tab.</p>
         </div>
         <button className="button button-soft" type="button" onClick={() => onNavigate('home')}>Back Home</button>
       </div>
@@ -92,11 +101,13 @@ export function SearchScreen({ datasets, onNavigate }: SearchScreenProps) {
       <div className="file-overview-grid">
         {datasets.slice(0, 4).map((dataset) => (
           <article className="mini-file-card" key={dataset.id}>
-            <strong>{dataset.fileName}</strong>
+            <strong>{dataset.displayName}</strong>
             <span>{dataset.rowCount.toLocaleString()} rows</span>
           </article>
         ))}
-        {datasets.length > 4 && <article className="mini-file-card muted">+{datasets.length - 4} more imported file(s)</article>}
+        {datasets.length > 4 && (
+          <article className="mini-file-card muted">+{datasets.length - 4} more tab(s)</article>
+        )}
       </div>
 
       <div className="search-panel">
@@ -111,11 +122,20 @@ export function SearchScreen({ datasets, onNavigate }: SearchScreenProps) {
         </label>
 
         <label className="field">
-          <span>Imported file</span>
+          <span>Tab / File</span>
           <select value={filters.datasetId} onChange={(event) => updateFilter('datasetId', event.target.value)}>
             <option value="all">All Files</option>
-            {datasets.map((dataset) => (
-              <option key={dataset.id} value={dataset.id}>{dataset.fileName}</option>
+            {Array.from(fileGroups.entries()).map(([fileName, sheets]) => (
+              <optgroup key={fileName} label={fileName}>
+                {sheets.length > 1 && (
+                  <option value={`file:${fileName}`}>All tabs in this file</option>
+                )}
+                {sheets.map((dataset) => (
+                  <option key={dataset.id} value={dataset.id}>
+                    {dataset.sheetName ? `Tab: ${dataset.sheetName}` : dataset.fileName}
+                  </option>
+                ))}
+              </optgroup>
             ))}
           </select>
         </label>
@@ -154,7 +174,7 @@ export function SearchScreen({ datasets, onNavigate }: SearchScreenProps) {
           <table>
             <thead>
               <tr>
-                <th>File</th>
+                <th>Source</th>
                 {hasQuery && <th>Matched Column</th>}
                 {visibleColumns.map((column) => <th key={column}>{column}</th>)}
               </tr>
@@ -162,7 +182,7 @@ export function SearchScreen({ datasets, onNavigate }: SearchScreenProps) {
             <tbody>
               {displayedRows.slice(0, 500).map((result) => (
                 <tr key={`${result.datasetId}-${result.rowIndex}-${hasQuery ? 'match' : 'browse'}`}>
-                  <td>{result.fileName}</td>
+                  <td>{result.displayName}</td>
                   {hasQuery && <td>{result.matchedColumns.join(', ')}</td>}
                   {visibleColumns.map((column) => <td key={column}>{result.row[column] ?? ''}</td>)}
                 </tr>
@@ -171,7 +191,7 @@ export function SearchScreen({ datasets, onNavigate }: SearchScreenProps) {
           </table>
           {displayedRows.length > 500 && (
             <p className="small-note table-note">
-              Showing first 500 rows. Type a search value or choose one imported file to narrow the list.
+              Showing first 500 rows. Type a search value or choose a specific tab to narrow the list.
             </p>
           )}
         </div>

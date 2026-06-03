@@ -13,14 +13,20 @@ function isMatch(cellValue: string, query: string, matchMode: SearchFilters['mat
   return normalizedCell.includes(normalizedQuery);
 }
 
+export function filterDatasets(datasets: Dataset[], datasetId: SearchFilters['datasetId']): Dataset[] {
+  if (datasetId === 'all') return datasets;
+  if (datasetId.startsWith('file:')) {
+    const fileName = datasetId.slice(5);
+    return datasets.filter((d) => d.fileName === fileName);
+  }
+  return datasets.filter((d) => d.id === datasetId);
+}
+
 export function searchDatasets(datasets: Dataset[], filters: SearchFilters): SearchResult[] {
   const query = filters.query.trim();
   if (!query) return [];
 
-  const selectedDatasets = filters.datasetId === 'all'
-    ? datasets
-    : datasets.filter((dataset) => dataset.id === filters.datasetId);
-
+  const selectedDatasets = filterDatasets(datasets, filters.datasetId);
   const results: SearchResult[] = [];
 
   selectedDatasets.forEach((dataset) => {
@@ -37,6 +43,8 @@ export function searchDatasets(datasets: Dataset[], filters: SearchFilters): Sea
         results.push({
           datasetId: dataset.id,
           fileName: dataset.fileName,
+          sheetName: dataset.sheetName,
+          displayName: dataset.displayName,
           rowIndex,
           row,
           matchedColumns,

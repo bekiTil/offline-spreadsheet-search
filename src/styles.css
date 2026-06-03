@@ -152,6 +152,58 @@ tbody tr:hover td { background: #fafafa; }
 .tag-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .tag { padding: 6px 9px; border-radius: 999px; background: #f1f5f9; color: #334155; font-size: 13px; font-weight: 700; }
 
+/* Multi-tab / file group styles */
+.file-group { display: grid; gap: 0; }
+.file-group-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 20px;
+  background: var(--soft);
+  border: 1px solid var(--line);
+  border-bottom: none;
+  border-radius: 16px 16px 0 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+.file-group-header strong { color: var(--text); flex: 1; }
+.file-group .preview-card:not(:last-child) { border-bottom: none; border-radius: 0; }
+.file-group .preview-card:last-child { border-radius: 0 0 16px 16px; }
+.file-group .preview-card:only-child { border-radius: 16px; }
+
+.tab-label { font-size: 13px; color: var(--muted); margin: 2px 0 0; font-weight: 600; }
+
+.file-group-manage { display: grid; gap: 0; }
+.file-group-manage-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 16px 20px 12px;
+  background: var(--soft);
+  border: 1px solid var(--line);
+  border-bottom: none;
+  border-radius: 16px 16px 0 0;
+}
+.file-group-manage-header h2 { margin: 0; }
+.file-group-manage-header p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+.file-card-tab {
+  border-left: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  padding: 14px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  background: #fff;
+}
+.file-card-tab:last-child { border-radius: 0 0 16px 16px; }
+.file-card-tab h3 { margin: 0; font-size: 15px; }
+.file-card-tab p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+.button-small { padding: 7px 13px; font-size: 13px; }
+
 @media (max-width: 900px) {
   .home-grid, .search-panel { grid-template-columns: 1fr; }
   .screen-header, .preview-header, .file-card, .top-nav { flex-direction: column; align-items: stretch; }

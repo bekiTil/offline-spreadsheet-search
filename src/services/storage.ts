@@ -12,7 +12,7 @@ interface SpreadsheetSearchDB extends DBSchema {
 }
 
 const DB_NAME = 'offline-spreadsheet-search';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 const dbPromise = openDB<SpreadsheetSearchDB>(DB_NAME, DB_VERSION, {
   upgrade(db) {
