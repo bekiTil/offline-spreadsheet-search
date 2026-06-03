@@ -704,6 +704,61 @@ a { color: inherit; }
 }
 .match-select:focus { border-color: #0f172a; }
 
+/* ── Category multi-select ───────────────────────────────────────────────── */
+.category-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.category-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.cat-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 13px;
+  border: 1.5px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s, color 0.12s;
+  white-space: nowrap;
+}
+.cat-chip:hover { border-color: #94a3b8; background: var(--soft); }
+.cat-chip.on {
+  border-color: #0f172a;
+  background: #0f172a;
+  color: #fff;
+  font-weight: 600;
+}
+.cat-chip-check {
+  font-size: 10px;
+  font-weight: 800;
+  opacity: 0.85;
+}
+.category-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+.cat-divider { color: var(--line); }
+.selected-count {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--soft);
+  padding: 2px 9px;
+  border-radius: 999px;
+}
+
 /* Autocomplete */
 .autocomplete-box {
   position: absolute;
